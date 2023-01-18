@@ -1,0 +1,125 @@
+    internal class CommonMethods {
+
+        public static string RemoveSpecialCharacters(string str) {
+            if (str == null) return "";
+
+            string regularExpressionString = "[^a-zA-Z0-9 s|]+"; //Things that are not Letters, Numbers, or Spaces
+            return Regex.Replace(str, regularExpressionString, "", RegexOptions.Compiled);
+        }
+        public static List<T> CombineTwoLists<T>(List<T> listA, List<T> listB) {
+            List<T> combinedList = new List<T>();
+
+            foreach (T listAItem in listA) {
+                combinedList.Add(listAItem);
+            }
+            foreach (T listBItem in listB) {
+                combinedList.Add(listBItem);
+            }
+
+            return combinedList;
+        }
+
+        public static List<T> ConvertSpreadsheetWithHeadersToClass<T>(string spreadSheetPath) {
+            //List of class
+            List<T> allObjT = new List<T>();
+
+            //Open file
+            Application excelApplication = new Application();
+            Workbook workbook = excelApplication.Workbooks.Open(spreadSheetPath);
+
+            //Get range of data from the first worksheet
+            Worksheet worksheet = workbook.Worksheets[1];
+            Range usedRange = worksheet.UsedRange;
+            int numberOfRows = usedRange.Rows.Count;
+            int numberOfColumns = usedRange.Columns.Count;
+
+            //Read data from worksheet
+            for (int row = 2; row <= numberOfRows; row++) {
+                //New class
+                var objT = Activator.CreateInstance<T>();
+
+                for(int column = 1; column <= numberOfColumns; column++) {
+                    //Get Header
+                    var headerValue = worksheet.Cells[1, column].Value;
+                    string headerValueStr = headerValue.ToString();
+
+                    //Get cell value
+                    var cellValue = worksheet.Cells[row, column].Value;
+                    if (cellValue == null) continue;
+                    string cellValueStr = cellValue.ToString().Trim();
+
+                    //Drop non-existing fields
+                    if (objT.GetType().GetProperty(headerValueStr) == null) {
+                        LogHandler.AddLogEvent(LogType.SPREADSHEET_HEADER_MISMATCH, $"Header '{headerValueStr}' on {spreadSheetPath}");
+                        continue;
+                    }
+                    
+                    //Get field property type
+                    var fieldPropertyType = objT.GetType().GetProperty(headerValueStr).PropertyType;
+
+                    //Set field property value based on type
+                    if (fieldPropertyType == typeof(decimal) || fieldPropertyType == typeof(decimal?)) {
+                        objT.GetType().GetProperty(headerValueStr).SetValue(objT, ConvertStringToDecimal(cellValueStr));
+                    } else if (fieldPropertyType == typeof(DateTime) || fieldPropertyType == typeof(DateTime?)) {
+                        objT.GetType().GetProperty(headerValueStr).SetValue(objT, ConvertStringToDateTime(cellValueStr, DateStringFormat.MMDDYYYY));
+                    } else if (fieldPropertyType == typeof(int) || fieldPropertyType == typeof(int?)) {
+                        objT.GetType().GetProperty(headerValueStr).SetValue(objT, Int32.Parse(cellValueStr));
+                    } else {
+                        objT.GetType().GetProperty(headerValueStr).SetValue(objT, cellValueStr);
+                    }
+                }
+
+                //Add to all debtors
+                allObjT.Add(objT);
+            }
+            
+            //Free resources
+            workbook.Close();
+            excelApplication.Quit();
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            //Return
+            return allObjT;
+        }
+
+        public static DateTime? ConvertStringToDateTime(string dateTimeStr, DateStringFormat dateFormat) {
+            if (dateTimeStr == string.Empty) return null;
+            if (dateTimeStr == null) return null;
+
+            //Parse depending on format
+            var dateTime = DateTime.Now;
+            switch (dateFormat) {
+                case DateStringFormat.MMDDYYYY:
+                    dateTime = DateTime.Parse(dateTimeStr);
+                    return dateTime;
+                case DateStringFormat.YYYYMMDD:
+                    dateTime = DateTime.ParseExact(dateTimeStr, "yyyyMMdd", CultureInfo.InvariantCulture);
+                    return dateTime;
+                default:
+                    //Invalid DataStringFormat
+                    return null;
+            }
+        }
+        public static decimal ConvertStringToDecimal(string decimalStr) {
+            if(Decimal.TryParse(decimalStr, out decimal result)) {
+                return result;
+            } else {
+                //Failed conversion
+                return 0;
+            }
+        }
+        public static int ConvertStringToInt(string str) {
+            if (str == string.Empty) return -1;
+
+            int number;
+            bool success = int.TryParse(str, out number);
+            if(success) {
+                return number;
+            } else {
+                return -1;
+            }
+        }
+        
+    }
